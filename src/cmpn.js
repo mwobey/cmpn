@@ -105,6 +105,21 @@ class Companion {
       }
 
       return this.state;
+    });//request(verify).then
+  }//verify()
+
+  fetch_system_data() {
+    if (this.state != Companion.STATES.LOGGED_IN) {
+      throw new CompanionAPIError("System data can only be fetched when logged in.")
+    }
+
+    return request({
+      url: Companion.URLS.FETCH,
+      headers: this.headers,
+      jar: this.cookies,
+      method: 'GET'
+    }).then((response) => {
+      return JSON.parse(response.body);
     });
   }
 
@@ -115,13 +130,13 @@ Companion.STATES = Object.freeze({
   "INIT": 1,
   "ERROR_CREDENTIALS": 2,
   "VERIFY_NEEDED": 3,
-  "LOGGED_IN": 5
+  "LOGGED_IN": 4
 });
 
 Companion.URLS = Object.freeze({
   LOGIN: "https://companion.orerve.net/user/login",
   VERIFY: "https://companion.orerve.net/user/confirm",
-  UPDATE: "https://companion.orerve.net/profile"
+  FETCH: "https://companion.orerve.net/profile"
 });
 //endregion
 
@@ -131,7 +146,7 @@ module.exports = Companion;
 
 //region Functions for CLI
 
-const prompt = require("readline").createInterface({ input: process.stdin,  output: process.stdout });
+const rl = require("readline");
 
 var cli_state_handler = (state) => {
   switch (state) {
@@ -139,13 +154,18 @@ var cli_state_handler = (state) => {
       throw new CompanionAPIError("Invalid login.")
     case Companion.STATES.VERIFY_NEEDED:
       return new Promise((resolve) => {
-        prompt.question("Enter verification code: ", (answer) => resolve(answer));
+        var prompt = rl.createInterface({ input: process.stdin,  output: process.stdout });
+        prompt.question("Enter verification code: ", (answer) => {
+          resolve(answer);
+          prompt.close();
+        });
+
       }).then((verify_code) => {
         return cmpn.verify(verify_code);
       }).then(cli_state_handler);
       break;
     case Companion.STATES.LOGGED_IN:
-          break;
+          return cmpn.fetch_system_data();
   }//switch state
 };//cli_state_handler
 
@@ -153,7 +173,7 @@ var cli_state_handler = (state) => {
 if ( require.main == module ) {
 
   var cmpn = new Companion("mobetz@gmail.com", "asdf");
-  cmpn.login().then(cli_state_handler).catch(console.log.bind(console));
+  cmpn.login().then(cli_state_handler).then((system_data) => console.log(system_data)).catch(console.log.bind(console));
 
   return 0;
 }
