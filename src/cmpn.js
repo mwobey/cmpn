@@ -79,11 +79,33 @@ class Companion {
     }//if not yet logged in
   }//login
 
-  verify ( code=null ) {
+  verify ( code ) {
     if (!code) {
       throw new CompanionAPIError("Must supply a validation code in order to verify usage from a new computer.")
     }
-    throw new Error("Not Implemented");
+    return request({
+      url: Companion.URLS.VERIFY,
+      method: "POST",
+      jar: this.cookies,
+      headers: this.headers,
+      form: { code: code }
+    }).then((response) => {
+      if ( response.statusCode >= 400 ){
+        throw new CompanionAPIError("Failed to connect to Companion API.");
+      }
+      else if ( response.statusCode == 200 &&
+          ( response.body.indexOf("Incorrect code") > 0 || response.body.indexOf("Too long") > 0 ) ) {
+        this.state = Companion.STATES.VERIFY_NEEDED; //it should already be this, but let's be explicit
+      }
+      else if ( response.statusCode == 302 && response.headers.location == '/' ) {
+        this.state = Companion.STATES.LOGGED_IN;
+      }
+      else {
+        throw new CompanionAPIError("Unhandled response.")
+      }
+
+      return this.state;
+    });
   }
 
 }//class Companion
@@ -93,7 +115,7 @@ Companion.STATES = Object.freeze({
   "INIT": 1,
   "ERROR_CREDENTIALS": 2,
   "VERIFY_NEEDED": 3,
-  "LOGGED_IN": 4
+  "LOGGED_IN": 5
 });
 
 Companion.URLS = Object.freeze({
@@ -109,21 +131,29 @@ module.exports = Companion;
 
 //region Functions for CLI
 
-var readline = require("readline");
+const prompt = require("readline").createInterface({ input: process.stdin,  output: process.stdout });
 
 var cli_state_handler = (state) => {
-  if (state == Companion.STATES.ERROR_CREDENTIALS) {
-    throw new CompanionAPIError("Invalid login.")
-  }
-  else if (state == Companion.STATES.VERIFY_NEEDED) {
-    cmpn.verify(readline.prompt("Enter verification code: ")).then(cli_state_handler);
-  }
-};
+  switch (state) {
+    case Companion.STATES.ERROR_CREDENTIALS:
+      throw new CompanionAPIError("Invalid login.")
+    case Companion.STATES.VERIFY_NEEDED:
+      return new Promise((resolve) => {
+        prompt.question("Enter verification code: ", (answer) => resolve(answer));
+      }).then((verify_code) => {
+        return cmpn.verify(verify_code);
+      }).then(cli_state_handler);
+      break;
+    case Companion.STATES.LOGGED_IN:
+          break;
+  }//switch state
+};//cli_state_handler
+
 
 if ( require.main == module ) {
 
   var cmpn = new Companion("mobetz@gmail.com", "asdf");
-  cmpn.login().then(cli_state_handler);
+  cmpn.login().then(cli_state_handler).catch(console.log.bind(console));
 
   return 0;
 }
