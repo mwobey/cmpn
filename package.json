@@ -1,0 +1,12 @@
+{
+  "name": "cmpn",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/cmpn.js",
+  "scripts": {
+    "start": "node ./src/cmpn.js"
+  },
+  "dependencies": {
+    "request-promise": "*"
+  }
+}
